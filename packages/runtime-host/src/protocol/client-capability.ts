@@ -838,6 +838,7 @@ const CLIENT_CAPABILITY_SCHEMA_KEYWORDS = new Set([
   'multipleOf',
   'oneOf',
   'pattern',
+  'patternProperties',
   'propertyNames',
   'properties',
   'required',
@@ -905,7 +906,7 @@ function validateToolInputSchema(root: Record<string, unknown>): void {
     if (schema.uniqueItems !== undefined && typeof schema.uniqueItems !== 'boolean') {
       throw invalidProtocolFrame('Invalid Client Capability tool schema uniqueItems');
     }
-    for (const key of ['properties', '$defs', 'definitions'] as const) {
+    for (const key of ['properties', 'patternProperties', '$defs', 'definitions'] as const) {
       if (schema[key] === undefined) continue;
       const entries = requireRecord(schema[key], `Client Capability tool schema ${key}`);
       for (const nested of Object.values(entries)) visit(nested);

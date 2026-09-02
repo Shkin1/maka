@@ -344,6 +344,26 @@ describe('Client Capability protocol', () => {
         ),
       (error: unknown) => error instanceof RuntimeHostProtocolError,
     );
+    assert.doesNotThrow(() =>
+      decodeClientFrame(
+        replaceFrame([
+          {
+            ...offer('pattern_properties', 'tool'),
+            tools: [
+              {
+                ...offer('pattern_properties', 'tool').tools[0],
+                inputSchema: {
+                  type: 'object',
+                  patternProperties: {
+                    '^x-': { type: 'string' },
+                  },
+                },
+              },
+            ],
+          },
+        ]),
+      ),
+    );
     for (const inputSchema of [
       { type: 'string' },
       { type: 'object', unsupportedKeyword: true },
@@ -390,6 +410,35 @@ describe('Client Capability protocol', () => {
           },
         ]),
       ),
+    );
+    assert.throws(
+      () =>
+        decodeClientFrame(
+          replaceFrame([
+            {
+              ...offer('annotated_schema', 'tool'),
+              tools: [
+                {
+                  ...offer('annotated_schema', 'tool').tools[0],
+                  inputSchema: {
+                    $id: 'https://example.com/tool.schema.json',
+                    type: 'object',
+                    properties: {
+                      prefix: {
+                        type: 'string',
+                        pattern: '^[a-z]+$',
+                      },
+                    },
+                    patternProperties: {
+                      '^x-': { type: 'string' },
+                    },
+                  },
+                },
+              ],
+            },
+          ]),
+        ),
+      (error: unknown) => error instanceof RuntimeHostProtocolError,
     );
     assert.doesNotThrow(() =>
       decodeClientFrame(

@@ -19,6 +19,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { jsonSchema } from 'ai';
 import { buildComputerUseTools, type ComputerUseToolSet } from '@maka/runtime/computer-use-tools';
 import { type CuDispatchBackend } from '@maka/runtime/computer-use-types';
 import { type MakaTool, type MakaToolContext } from '@maka/runtime/tool-runtime';
@@ -136,6 +137,69 @@ test('publishes the real Computer Use schema through the Client Capability proto
       !actionSchema.action.enum.includes('left_click'),
     true,
   );
+});
+
+test('accepts jsonSchema-wrapped MCP proxy tool descriptors', async () => {
+  const calls: unknown[] = [];
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'fixture_tool',
+            displayName: 'fixture_tool',
+            description: 'fixture_tool description',
+            parameters: jsonSchema({
+              $id: 'https://example.com/tool.schema.json',
+              type: 'object',
+              properties: {
+                prefix: { type: 'string', pattern: '^[a-z]+$' },
+              },
+              patternProperties: {
+                '^x-': { type: 'string' },
+              },
+            }),
+            impl: async (args) => {
+              calls.push(args);
+              return 'ok';
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.doesNotThrow(() =>
+    decodeClientCapabilityReplaceInput({
+      registrationId: 'registration-1',
+      offers: provider.offers(),
+    }),
+  );
+  assert.equal(provider.offers()[0]?.tools[0]?.inputSchema.$id, undefined);
+  assert.deepEqual(
+    provider.offers()[0]?.tools[0]?.inputSchema.patternProperties,
+    { '^x-': { type: 'string' } },
+  );
+
+  await call(
+    provider,
+    capabilityFrame({
+      offerId: 'desktop_mcp',
+      serverId: 'desktop_mcp',
+      toolName: 'fixture_tool',
+      arguments: { prefix: 'abc', 'x-test': 'value' },
+    }),
+  );
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { prefix: 'abc', 'x-test': 'value' });
 });
 
 test('publishes every production Desktop-owned tool schema through the protocol', () => {
