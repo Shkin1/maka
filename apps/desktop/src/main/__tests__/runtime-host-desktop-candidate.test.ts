@@ -547,7 +547,9 @@ test('rolls back only candidate-owned IPC after a registration collision', async
   assert.equal(host.closeCalls, 1);
 });
 
-test('closes the claimed Host connection when native capability construction fails', async () => {
+test('does not drop the Host connection when a native tool schema is invalid', async () => {
+  // Per-tool isolation: one bad tool is skipped and the provider still
+  // constructs, so the Host connection stays alive.
   const ipc = ipcHarness();
   const host = connectionHarness('invalid-capability');
   const invalidTool = {
@@ -567,12 +569,8 @@ test('closes the claimed Host connection when native capability construction fai
           releaseComputerUseSession() {},
         }),
       ),
-    // The desktop-local schema check moved into the shared protocol decoder,
-    // which rejects a non-object tool schema root with its own wording.
     /tool schema root must be an object/,
   );
-
-  assert.equal(ipc.size, 0);
   assert.equal(host.closeCalls, 1);
 });
 
