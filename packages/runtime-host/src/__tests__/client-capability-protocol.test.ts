@@ -411,6 +411,31 @@ describe('Client Capability protocol', () => {
         ]),
       ),
     );
+    assert.doesNotThrow(() =>
+      decodeClientFrame(
+        replaceFrame([
+          {
+            ...offer('annotated_values', 'tool'),
+            tools: [
+              {
+                ...offer('annotated_values', 'tool').tools[0],
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    value: {
+                      type: 'string',
+                      default: 'ready',
+                      enum: ['ready', 'done'],
+                      examples: ['ready'],
+                    },
+                  },
+                },
+              },
+            ],
+          },
+        ]),
+      ),
+    );
     assert.throws(
       () =>
         decodeClientFrame(

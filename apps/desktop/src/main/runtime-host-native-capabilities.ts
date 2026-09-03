@@ -30,6 +30,8 @@ import {
   CLIENT_CAPABILITY_MAX_OFFERS,
   CLIENT_CAPABILITY_MAX_TOOLS,
   CLIENT_CAPABILITY_MAX_TOOLS_PER_OFFER,
+  CLIENT_CAPABILITY_SCHEMA_KEYWORDS,
+  clientCapabilityEntityId,
   decodeClientCapabilityReplaceInput,
   decodeClientCapabilityToolDescriptor,
   type ClientCapabilityCallFrame,
@@ -394,7 +396,7 @@ async function invokeNativeTool(
   }
   const signal = AbortSignal.any([options.signal, invocation.signal]);
   signal.throwIfAborted();
-  const args = await parseToolArguments(binding.tool, frame.arguments);
+  const args = await parseNativeToolArguments(binding.tool.parameters, frame.arguments);
   signal.throwIfAborted();
   const sessionId =
     frame.offerId === BROWSER_OFFER_ID || frame.offerId === COMPUTER_USE_OFFER_ID
@@ -658,7 +660,7 @@ function declaredToolInputSchema(tool: MakaTool): Record<string, unknown> {
       })
     : cloneDeclaredJsonSchema(tool);
   delete schema.$schema;
-  return schema;
+  return Object.freeze(projectClientCapabilitySchema(schema));
 }
 
 function cloneDeclaredJsonSchema(tool: MakaTool): Record<string, unknown> {
@@ -669,17 +671,71 @@ function cloneDeclaredJsonSchema(tool: MakaTool): Record<string, unknown> {
       `Desktop native capability tool has an invalid schema: ${tool.name}`,
     );
   }
-  return structuredClone(schema);
+  const projected = Object.hasOwn(schema, 'type')
+    ? schema
+    : { ...schema, type: 'object' };
+  return structuredClone(projected);
 }
 
-async function parseToolArguments(tool: MakaTool, args: unknown): Promise<unknown> {
-  if (tool.parameters instanceof z.ZodType) {
-    return tool.parameters.parseAsync(args);
+async function parseNativeToolArguments(parameters: unknown, args: unknown): Promise<unknown> {
+  if (parameters instanceof z.ZodType) {
+    return parameters.parseAsync(args);
   }
-  // The only non-Zod parameters are JSON-Schema declarations (MCP tools via
-  // jsonSchema()), which carry no client-side validator: validation is the
-  // producing server's responsibility.
+  const wrapper = parameters as { validate?: (value: unknown) => PromiseLike<{ success: true; value?: unknown } | { success: false; error: Error }> };
+  if (typeof wrapper.validate === 'function') {
+    const result = await wrapper.validate(args);
+    if (result.success) return result.value ?? args;
+    throw result.error ?? new Error('Invalid arguments');
+  }
   return args;
+}
+
+interface JsonSchemaWrapper {
+  readonly jsonSchema?: Record<string, unknown>;
+}
+
+function projectClientCapabilitySchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (!CLIENT_CAPABILITY_SCHEMA_KEYWORDS.has(key)) continue;
+    result[key] = projectClientCapabilitySchemaKeyword(key, value);
+  }
+  return result;
+}
+
+function projectClientCapabilitySchemaKeyword(key: string, value: unknown): unknown {
+  switch (key) {
+    case 'properties':
+    case 'patternProperties':
+    case '$defs':
+    case 'definitions': {
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
+      const result: Record<string, unknown> = {};
+      for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+        result[nestedKey] = projectClientCapabilitySchemaNode(nestedValue);
+      }
+      return result;
+    }
+    case 'items':
+      return Array.isArray(value)
+        ? value.map((entry) => projectClientCapabilitySchemaNode(entry))
+        : projectClientCapabilitySchemaNode(value);
+    case 'allOf':
+    case 'anyOf':
+    case 'oneOf':
+      return Array.isArray(value) ? value.map((entry) => projectClientCapabilitySchemaNode(entry)) : [];
+    case 'additionalProperties':
+    case 'propertyNames':
+      return projectClientCapabilitySchemaNode(value);
+    default:
+      return value;
+  }
+}
+
+function projectClientCapabilitySchemaNode(value: unknown): unknown {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((entry) => projectClientCapabilitySchemaNode(entry));
+  return projectClientCapabilitySchema(value as Record<string, unknown>);
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

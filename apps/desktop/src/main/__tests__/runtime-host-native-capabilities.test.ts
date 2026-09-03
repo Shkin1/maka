@@ -161,7 +161,13 @@ test('accepts jsonSchema-wrapped MCP proxy tool descriptors', async () => {
               $id: 'https://example.com/tool.schema.json',
               type: 'object',
               properties: {
-                prefix: { type: 'string', pattern: '^[a-z]+$' },
+                prefix: {
+                  type: 'string',
+                  default: 'ready',
+                  enum: ['ready', 'done'],
+                  examples: ['ready'],
+                  pattern: '^[a-z]+$',
+                },
               },
               patternProperties: {
                 '^x-': { type: 'string' },
@@ -183,7 +189,14 @@ test('accepts jsonSchema-wrapped MCP proxy tool descriptors', async () => {
       offers: provider.offers(),
     }),
   );
+  const properties = provider.offers()[0]?.tools[0]?.inputSchema.properties as
+    | Record<string, { default?: unknown; enum?: unknown; examples?: unknown }>
+    | undefined;
+  const prefixSchema = properties?.prefix;
   assert.equal(provider.offers()[0]?.tools[0]?.inputSchema.$id, undefined);
+  assert.equal(prefixSchema?.default, 'ready');
+  assert.deepEqual(prefixSchema?.enum, ['ready', 'done']);
+  assert.deepEqual(prefixSchema?.examples, ['ready']);
   assert.deepEqual(
     provider.offers()[0]?.tools[0]?.inputSchema.patternProperties,
     { '^x-': { type: 'string' } },

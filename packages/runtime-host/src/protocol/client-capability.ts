@@ -810,7 +810,7 @@ const CLIENT_CAPABILITY_SCHEMA_TYPES = new Set([
   'object',
   'string',
 ]);
-const CLIENT_CAPABILITY_SCHEMA_KEYWORDS = new Set([
+export const CLIENT_CAPABILITY_SCHEMA_KEYWORDS = new Set([
   '$defs',
   '$ref',
   'additionalItems',
