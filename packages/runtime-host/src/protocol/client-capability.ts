@@ -998,7 +998,7 @@ export function validateToolInputSchema(root: Record<string, unknown>): void {
       switch (shape) {
         case 'record': {
           const entries = requireRecord(schema[key], `Client Capability tool schema ${key}`);
-if (key === 'patternProperties') {
+          if (key === 'patternProperties') {
             for (const patternKey of Object.keys(entries)) {
               validateSchemaPattern(patternKey);
             }
