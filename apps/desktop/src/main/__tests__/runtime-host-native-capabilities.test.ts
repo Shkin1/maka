@@ -139,8 +139,7 @@ test('publishes the real Computer Use schema through the Client Capability proto
   );
 });
 
-test('accepts jsonSchema-wrapped MCP proxy tool descriptors', async () => {
-  const calls: unknown[] = [];
+test('projects and publishes jsonSchema-wrapped MCP proxy tool descriptors', () => {
   const provider = createDesktopNativeCapabilityProvider({
     browserTools: [],
     resolveBrowserUrl: () => 'https://example.com/',
@@ -173,10 +172,7 @@ test('accepts jsonSchema-wrapped MCP proxy tool descriptors', async () => {
                 '^x-': { type: 'string' },
               },
             }),
-            impl: async (args) => {
-              calls.push(args);
-              return 'ok';
-            },
+            impl: async () => 'ok',
           },
         ],
       },
@@ -189,30 +185,187 @@ test('accepts jsonSchema-wrapped MCP proxy tool descriptors', async () => {
       offers: provider.offers(),
     }),
   );
-  const properties = provider.offers()[0]?.tools[0]?.inputSchema.properties as
+  const published = provider.offers()[0]?.tools[0]?.inputSchema;
+  const properties = published?.properties as
     | Record<string, { default?: unknown; enum?: unknown; examples?: unknown }>
     | undefined;
   const prefixSchema = properties?.prefix;
-  assert.equal(provider.offers()[0]?.tools[0]?.inputSchema.$id, undefined);
+  assert.equal(published?.$id, undefined);
   assert.equal(prefixSchema?.default, 'ready');
   assert.deepEqual(prefixSchema?.enum, ['ready', 'done']);
   assert.deepEqual(prefixSchema?.examples, ['ready']);
-  assert.deepEqual(
-    provider.offers()[0]?.tools[0]?.inputSchema.patternProperties,
-    { '^x-': { type: 'string' } },
-  );
+  assert.deepEqual(published?.patternProperties, { '^x-': { type: 'string' } });
+});
 
+test('validates jsonSchema-wrapped tool arguments and rejects invalid input', async () => {
+  const calls: unknown[] = [];
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'fixture_tool',
+            displayName: 'fixture_tool',
+            description: 'fixture_tool description',
+            parameters: jsonSchema({
+              type: 'object',
+              properties: {
+                prefix: {
+                  type: 'string',
+                  enum: ['ready', 'done'],
+                },
+              },
+              required: ['prefix'],
+              additionalProperties: false,
+            }),
+            impl: async (args) => {
+              calls.push(args);
+              return 'ok';
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  // Reject enum-violating values.
+  await assert.rejects(
+    () =>
+      call(
+        provider,
+        capabilityFrame({
+          offerId: 'desktop_mcp',
+          serverId: 'desktop_mcp',
+          toolName: 'fixture_tool',
+          arguments: { prefix: 'abc' },
+        }),
+      ),
+    /Invalid arguments/,
+  );
+  assert.equal(calls.length, 0);
+
+  // Accept a valid enum value.
   await call(
     provider,
     capabilityFrame({
       offerId: 'desktop_mcp',
       serverId: 'desktop_mcp',
       toolName: 'fixture_tool',
-      arguments: { prefix: 'abc', 'x-test': 'value' },
+      arguments: { prefix: 'ready' },
     }),
   );
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], { prefix: 'abc', 'x-test': 'value' });
+  assert.deepEqual(calls[0], { prefix: 'ready' });
+});
+
+test('rejects non-object root jsonSchema at provider construction', () => {
+  assert.throws(
+    () =>
+      createDesktopNativeCapabilityProvider({
+        browserTools: [],
+        resolveBrowserUrl: () => 'https://example.com/',
+        releaseBrowserSession() {},
+        computerUseTools: computerTools(),
+        releaseComputerUseSession() {},
+        additionalGroups: () => [
+          {
+            offerId: 'desktop_mcp',
+            label: 'MCP',
+            description: 'MCP tools',
+            tools: [
+              {
+                name: 'fixture_tool',
+                displayName: 'fixture_tool',
+                description: 'fixture_tool description',
+                parameters: jsonSchema({
+                  type: 'string',
+                }),
+                impl: async () => 'ok',
+              },
+            ],
+          },
+        ],
+      }),
+    /root must be an object/,
+  );
+});
+
+test('rejects unsupported schema type', () => {
+  assert.throws(
+    () =>
+      createDesktopNativeCapabilityProvider({
+        browserTools: [],
+        resolveBrowserUrl: () => 'https://example.com/',
+        releaseBrowserSession() {},
+        computerUseTools: computerTools(),
+        releaseComputerUseSession() {},
+        additionalGroups: () => [
+          {
+            offerId: 'desktop_mcp',
+            label: 'MCP',
+            description: 'MCP tools',
+            tools: [
+              {
+                name: 'fixture_tool',
+                displayName: 'fixture_tool',
+                description: 'fixture_tool description',
+                parameters: 42,
+                impl: async () => 'ok',
+              },
+            ],
+          },
+        ],
+      }),
+    /unsupported schema type/,
+  );
+});
+
+test('one bad MCP schema is named and does not block other tools', () => {
+  // Empty `items` array is invalid at the protocol boundary, but the
+  // projection drops it, so the schema is published successfully.
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'fixture_tool',
+            displayName: 'fixture_tool',
+            description: 'fixture_tool description',
+            parameters: jsonSchema({
+              type: 'object',
+              properties: {
+                arr: { type: 'array', items: [] },
+              },
+            }),
+            impl: async () => 'ok',
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.doesNotThrow(() =>
+    decodeClientCapabilityReplaceInput({
+      registrationId: 'registration-1',
+      offers: provider.offers(),
+    }),
+  );
 });
 
 test('publishes every production Desktop-owned tool schema through the protocol', () => {

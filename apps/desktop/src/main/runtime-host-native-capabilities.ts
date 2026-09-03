@@ -30,10 +30,10 @@ import {
   CLIENT_CAPABILITY_MAX_OFFERS,
   CLIENT_CAPABILITY_MAX_TOOLS,
   CLIENT_CAPABILITY_MAX_TOOLS_PER_OFFER,
-  CLIENT_CAPABILITY_SCHEMA_KEYWORDS,
   clientCapabilityEntityId,
   decodeClientCapabilityReplaceInput,
   decodeClientCapabilityToolDescriptor,
+  projectToolInputSchema,
   type ClientCapabilityCallFrame,
   type ClientCapabilityCallResult,
   type ClientCapabilityContentBlock,
@@ -692,15 +692,6 @@ async function parseNativeToolArguments(parameters: unknown, args: unknown): Pro
 
 interface JsonSchemaWrapper {
   readonly jsonSchema?: Record<string, unknown>;
-}
-
-function projectClientCapabilitySchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(schema)) {
-    if (!CLIENT_CAPABILITY_SCHEMA_KEYWORDS.has(key)) continue;
-    result[key] = projectClientCapabilitySchemaKeyword(key, value);
-  }
-  return result;
 }
 
 function projectClientCapabilitySchemaKeyword(key: string, value: unknown): unknown {
