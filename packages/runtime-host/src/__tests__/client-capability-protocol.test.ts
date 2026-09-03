@@ -434,6 +434,27 @@ describe('Client Capability protocol', () => {
         ]),
       ),
     );
+    assert.throws(
+      () =>
+        decodeClientFrame(
+          replaceFrame([
+            {
+              ...offer('bad_pattern_property', 'tool'),
+              tools: [
+                {
+                  ...offer('bad_pattern_property', 'tool').tools[0],
+                  inputSchema: {
+                    type: 'object',
+                    properties: { value: { type: 'string' } },
+                    patternProperties: { '(': { type: 'string' } },
+                  },
+                },
+              ],
+            },
+          ]),
+        ),
+      (error: unknown) => error instanceof RuntimeHostProtocolError,
+    );
     assert.doesNotThrow(() =>
       decodeClientFrame(
         replaceFrame([

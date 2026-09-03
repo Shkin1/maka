@@ -925,7 +925,7 @@ function projectSchemaKeyword(key: string, value: unknown): unknown {
   }
 }
 
-function validateToolInputSchema(root: Record<string, unknown>): void {
+export function validateToolInputSchema(root: Record<string, unknown>): void {
   if (!Object.hasOwn(root, 'type') || root.type !== 'object') {
     throw invalidProtocolFrame('Client Capability tool schema root must be an object');
   }
@@ -998,15 +998,9 @@ function validateToolInputSchema(root: Record<string, unknown>): void {
       switch (shape) {
         case 'record': {
           const entries = requireRecord(schema[key], `Client Capability tool schema ${key}`);
-          if (key === 'patternProperties') {
+if (key === 'patternProperties') {
             for (const patternKey of Object.keys(entries)) {
-              try {
-                new RegExp(patternKey);
-              } catch {
-                throw invalidProtocolFrame(
-                  'Invalid Client Capability tool schema patternProperties',
-                );
-              }
+              validateSchemaPattern(patternKey);
             }
           }
           for (const nested of Object.values(entries)) visit(nested);
@@ -1057,6 +1051,21 @@ function validateToolInputSchema(root: Record<string, unknown>): void {
     if (!resolveLocalSchemaReference(root, reference)) {
       throw invalidProtocolFrame('Client Capability tool schema reference is unresolved');
     }
+  }
+}
+
+function validateSchemaPattern(value: unknown): void {
+  if (typeof value !== 'string') {
+    throw invalidProtocolFrame(
+      'Client Capability tool schema patternProperties key must be a string',
+    );
+  }
+  try {
+    new RegExp(value);
+  } catch {
+    throw invalidProtocolFrame(
+      'Client Capability tool schema patternProperties key is not a valid pattern',
+    );
   }
 }
 
