@@ -998,6 +998,17 @@ function validateToolInputSchema(root: Record<string, unknown>): void {
       switch (shape) {
         case 'record': {
           const entries = requireRecord(schema[key], `Client Capability tool schema ${key}`);
+          if (key === 'patternProperties') {
+            for (const patternKey of Object.keys(entries)) {
+              try {
+                new RegExp(patternKey);
+              } catch {
+                throw invalidProtocolFrame(
+                  'Invalid Client Capability tool schema patternProperties',
+                );
+              }
+            }
+          }
           for (const nested of Object.values(entries)) visit(nested);
           break;
         }

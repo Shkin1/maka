@@ -328,7 +328,7 @@ test('rejects unsupported schema type', () => {
   );
 });
 
-test('one bad MCP schema is named and does not block other tools', () => {
+test('empty items array is projected away so the schema still publishes', () => {
   // Empty `items` array is invalid at the protocol boundary, but the
   // projection drops it, so the schema is published successfully.
   const provider = createDesktopNativeCapabilityProvider({
@@ -366,6 +366,93 @@ test('one bad MCP schema is named and does not block other tools', () => {
       offers: provider.offers(),
     }),
   );
+});
+
+test('rejects an invalid patternProperties regex key at the protocol boundary', () => {
+  // An unparseable regex key survives projection (keys are copied verbatim)
+  // but must be rejected at decode so it never reaches Ajv.compile at call time.
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'fixture_tool',
+            displayName: 'fixture_tool',
+            description: 'fixture_tool description',
+            parameters: jsonSchema({
+              type: 'object',
+              patternProperties: {
+                '(': { type: 'string' },
+              },
+            }),
+            impl: async () => 'ok',
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.throws(
+    () =>
+      decodeClientCapabilityReplaceInput({
+        registrationId: 'registration-1',
+        offers: provider.offers(),
+      }),
+    /patternProperties/,
+  );
+});
+
+test('empty allOf/anyOf/oneOf are projected away so the schema still publishes', () => {
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'fixture_tool',
+            displayName: 'fixture_tool',
+            description: 'fixture_tool description',
+            parameters: jsonSchema({
+              type: 'object',
+              properties: {
+                x: { type: 'string', allOf: [], anyOf: [], oneOf: [] },
+              },
+            }),
+            impl: async () => 'ok',
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.doesNotThrow(() =>
+    decodeClientCapabilityReplaceInput({
+      registrationId: 'registration-1',
+      offers: provider.offers(),
+    }),
+  );
+  const published = provider.offers()[0]?.tools[0]?.inputSchema as
+    | { properties?: { x?: Record<string, unknown> } }
+    | undefined;
+  const x = published?.properties?.x;
+  assert.equal(x !== undefined && 'allOf' in x, false);
+  assert.equal(x !== undefined && 'anyOf' in x, false);
+  assert.equal(x !== undefined && 'oneOf' in x, false);
 });
 
 test('publishes every production Desktop-owned tool schema through the protocol', () => {
