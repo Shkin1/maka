@@ -547,7 +547,7 @@ test('rolls back only candidate-owned IPC after a registration collision', async
   assert.equal(host.closeCalls, 1);
 });
 
-test('does not drop the Host connection when a native tool schema is invalid', async () => {
+test('isolates an invalid dynamic MCP tool without dropping the Host connection', async () => {
   // Per-tool isolation: one bad tool is skipped and the provider still
   // constructs, so the Host connection stays alive.
   const ipc = ipcHarness();
@@ -556,21 +556,45 @@ test('does not drop the Host connection when a native tool schema is invalid', a
     ...nativeTool(),
     parameters: z.string(),
   } as unknown as MakaTool;
+  const healthyTool = {
+    ...nativeTool(),
+    name: 'healthy_mcp',
+    impl: async () => 'healthy',
+  };
 
-  await assert.rejects(
-    () =>
-      createDesktopRuntimeHostCandidate(
-        host.connection,
-        deps(ipc, {
-          browserTools: [invalidTool],
-          resolveBrowserUrl: () => 'https://example.com/',
-          releaseBrowserSession() {},
-          computerUseTools: emptyComputerUseTools(),
-          releaseComputerUseSession() {},
-        }),
-      ),
-    /tool schema root must be an object/,
+  const candidate = await createDesktopRuntimeHostCandidate(
+    host.connection,
+    deps(ipc, {
+      browserTools: [],
+      resolveBrowserUrl: () => 'https://example.com/',
+      releaseBrowserSession() {},
+      computerUseTools: emptyComputerUseTools(),
+      releaseComputerUseSession() {},
+      additionalGroups: () => [
+        {
+          offerId: 'desktop_mcp',
+          label: 'MCP',
+          description: 'MCP tools',
+          tools: [invalidTool, healthyTool],
+          dynamic: true,
+        },
+      ],
+    }),
   );
+
+  assert.equal(host.capabilityRegistrations, 1);
+  assert.equal(host.closeCalls, 0);
+  assert.deepEqual(
+    await host.invokeCapability({
+      ...capabilityFrame('session-invalid-capability'),
+      offerId: 'desktop_mcp',
+      serverId: 'desktop_mcp',
+      toolName: 'healthy_mcp',
+    }),
+    { content: [{ type: 'text', text: 'healthy' }] },
+  );
+
+  await candidate.close();
   assert.equal(host.closeCalls, 1);
 });
 

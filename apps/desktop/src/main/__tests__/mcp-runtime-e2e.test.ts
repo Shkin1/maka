@@ -90,6 +90,22 @@ test('MCP tools stay bound to the connection generation that advertised them', a
         properties: { value: { type: 'string' } },
       },
     });
+    const publishedAnnotated = provider.offers()
+      .flatMap(({ tools }) => tools)
+      .find(({ serverId, name }) => serverId === 'fixture' && name === 'annotated');
+    assert.deepEqual(publishedAnnotated && {
+      serverId: publishedAnnotated.serverId,
+      name: publishedAnnotated.name,
+      inputSchema: publishedAnnotated.inputSchema,
+    }, {
+      serverId: 'fixture',
+      name: 'annotated',
+      inputSchema: {
+        type: 'object',
+        properties: { value: { type: 'string' } },
+        patternProperties: { '^tag:': { type: 'string' } },
+      },
+    });
     if (!provider.call) throw new Error('Expected a callable Desktop capability provider');
     assert.throws(
       () => provider.call!(

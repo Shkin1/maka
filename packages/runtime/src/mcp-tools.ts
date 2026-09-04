@@ -19,7 +19,6 @@
 
 import { createHash } from 'node:crypto';
 import { jsonSchema } from 'ai';
-import { validateJsonSchemaInput } from './ai-sdk-backend.js';
 import type { ToolActivityKind } from '@maka/core/events';
 import type {
   McpCallResult,
@@ -143,12 +142,9 @@ export function buildMcpToolsWithIdentities(
         categoryHint: options.categoryHint ?? 'network_send',
         ...(options.hostAdmission ? { hostAdmission: options.hostAdmission } : {}),
         ...(options.recoveryMode ? { recoveryMode: options.recoveryMode } : {}),
-        parameters: jsonSchema(inputSchema, {
-          validate: async (value) => {
-            const result = validateJsonSchemaInput(inputSchema, value);
-            return result;
-          },
-        }),
+        // The MCP server owns the complete JSON Schema. Keeping the wrapper
+        // schema-only avoids duplicating validation in the Runtime main thread.
+        parameters: jsonSchema(inputSchema),
         ...(provider.prepareTool
           ? {
               prepareExecution: async (args: unknown, context) => {

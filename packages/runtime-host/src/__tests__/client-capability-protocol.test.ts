@@ -411,35 +411,6 @@ describe('Client Capability protocol', () => {
         ]),
       ),
     );
-    assert.throws(
-      () =>
-        decodeClientFrame(
-          replaceFrame([
-            {
-              ...offer('annotated_schema', 'tool'),
-              tools: [
-                {
-                  ...offer('annotated_schema', 'tool').tools[0],
-                  inputSchema: {
-                    $id: 'https://example.com/tool.schema.json',
-                    type: 'object',
-                    properties: {
-                      prefix: {
-                        type: 'string',
-                        pattern: '^[a-z]+$',
-                      },
-                    },
-                    patternProperties: {
-                      '^x-': { type: 'string' },
-                    },
-                  },
-                },
-              ],
-            },
-          ]),
-        ),
-      (error: unknown) => error instanceof RuntimeHostProtocolError,
-    );
     assert.doesNotThrow(() =>
       decodeClientFrame(
         replaceFrame([
@@ -482,7 +453,9 @@ describe('Client Capability protocol', () => {
             },
           ]),
         ),
-      (error: unknown) => error instanceof RuntimeHostProtocolError,
+      (error: unknown) =>
+        error instanceof RuntimeHostProtocolError &&
+        /patternProperties key is not a valid pattern/u.test(error.message),
     );
     assert.doesNotThrow(() =>
       decodeClientFrame(

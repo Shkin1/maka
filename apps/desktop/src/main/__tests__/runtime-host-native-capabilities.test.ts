@@ -21,7 +21,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { buildComputerUseTools, type ComputerUseToolSet } from '@maka/runtime/computer-use-tools';
 import { type CuDispatchBackend } from '@maka/runtime/computer-use-types';
-import { validateJsonSchemaInput } from '@maka/runtime/ai-sdk-backend';
 import { type MakaTool, type MakaToolContext } from '@maka/runtime/tool-runtime';
 import type { ClientCapabilityProvider } from '@maka/runtime-host/client';
 import {
@@ -38,12 +37,8 @@ import { createDesktopNativeCapabilityProvider } from '../runtime-host-native-ca
 
 function jsonSchema(schema: Record<string, unknown>): {
   jsonSchema: Record<string, unknown>;
-  validate: (value: unknown) => ReturnType<typeof Promise.resolve>;
 } {
-  return {
-    jsonSchema: schema,
-    validate: async (value) => validateJsonSchemaInput(schema, value),
-  };
+  return { jsonSchema: schema };
 }
 
 test('publishes self-described session-affine Browser and Computer Use offers', () => {
@@ -205,75 +200,6 @@ test('projects and publishes jsonSchema-wrapped MCP proxy tool descriptors', () 
   assert.deepEqual(prefixSchema?.enum, ['ready', 'done']);
   assert.deepEqual(prefixSchema?.examples, ['ready']);
   assert.deepEqual(published?.patternProperties, { '^x-': { type: 'string' } });
-});
-
-test('validates jsonSchema-wrapped tool arguments and rejects invalid input', async () => {
-  const calls: unknown[] = [];
-  const provider = createDesktopNativeCapabilityProvider({
-    browserTools: [],
-    resolveBrowserUrl: () => 'https://example.com/',
-    releaseBrowserSession() {},
-    computerUseTools: computerTools(),
-    releaseComputerUseSession() {},
-    additionalGroups: () => [
-      {
-        offerId: 'desktop_mcp',
-        label: 'MCP',
-        description: 'MCP tools',
-        tools: [
-          {
-            name: 'fixture_tool',
-            displayName: 'fixture_tool',
-            description: 'fixture_tool description',
-            parameters: jsonSchema({
-              type: 'object',
-              properties: {
-                prefix: {
-                  type: 'string',
-                  enum: ['ready', 'done'],
-                },
-              },
-              required: ['prefix'],
-              additionalProperties: false,
-            }),
-            impl: async (args) => {
-              calls.push(args);
-              return 'ok';
-            },
-          },
-        ],
-      },
-    ],
-  });
-
-  // Reject enum-violating values.
-  await assert.rejects(
-    () =>
-      call(
-        provider,
-        capabilityFrame({
-          offerId: 'desktop_mcp',
-          serverId: 'desktop_mcp',
-          toolName: 'fixture_tool',
-          arguments: { prefix: 'abc' },
-        }),
-      ),
-    /prefix must be equal to one of the allowed values/,
-  );
-  assert.equal(calls.length, 0);
-
-  // Accept a valid enum value.
-  await call(
-    provider,
-    capabilityFrame({
-      offerId: 'desktop_mcp',
-      serverId: 'desktop_mcp',
-      toolName: 'fixture_tool',
-      arguments: { prefix: 'ready' },
-    }),
-  );
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], { prefix: 'ready' });
 });
 
 test('skips non-object root jsonSchema tools without dropping the offer', () => {
@@ -442,119 +368,9 @@ test('skips a malformed MCP tool without dropping the other offers', async () =>
   assert.equal(healthyCalls, 1);
 });
 
-test('enforces regex constraints through the Runtime JSON Schema validator', async () => {
-  const calls: unknown[] = [];
-  const provider = createDesktopNativeCapabilityProvider({
-    browserTools: [],
-    resolveBrowserUrl: () => 'https://example.com/',
-    releaseBrowserSession() {},
-    computerUseTools: computerTools(),
-    releaseComputerUseSession() {},
-    additionalGroups: () => [
-      {
-        offerId: 'desktop_mcp',
-        label: 'MCP',
-        description: 'MCP tools',
-        tools: [
-          {
-            name: 'prefix_tool',
-            displayName: 'prefix_tool',
-            description: 'prefix_tool description',
-            parameters: jsonSchema({
-              type: 'object',
-              properties: {
-                prefix: { type: 'string', pattern: '^[a-z]+$' },
-              },
-            }),
-            impl: async (args) => {
-              calls.push(args);
-              return 'ok';
-            },
-          },
-        ],
-      },
-    ],
-  });
-
-  await assert.rejects(
-    () =>
-      call(
-        provider,
-        capabilityFrame({
-          offerId: 'desktop_mcp',
-          serverId: 'desktop_mcp',
-          toolName: 'prefix_tool',
-          arguments: { prefix: '123' },
-        }),
-      ),
-    /prefix must match pattern/,
-  );
-  assert.equal(calls.length, 0);
-});
-
-test('validates tuple items through the Runtime JSON Schema validator', async () => {
-  const provider = createDesktopNativeCapabilityProvider({
-    browserTools: [],
-    resolveBrowserUrl: () => 'https://example.com/',
-    releaseBrowserSession() {},
-    computerUseTools: computerTools(),
-    releaseComputerUseSession() {},
-    additionalGroups: () => [
-      {
-        offerId: 'desktop_mcp',
-        label: 'MCP',
-        description: 'MCP tools',
-        tools: [
-          {
-            name: 'tuple_tool',
-            displayName: 'tuple_tool',
-            description: 'tuple_tool description',
-            parameters: jsonSchema({
-              type: 'object',
-              properties: {
-                coordinate: {
-                  type: 'array',
-                  items: [{ type: 'integer' }, { type: 'integer' }],
-                },
-              },
-            }),
-            impl: async () => 'ok',
-          },
-        ],
-      },
-    ],
-  });
-
-  // Draft-07 tuples allow trailing items unless additionalItems is false.
-  await call(
-    provider,
-    capabilityFrame({
-      offerId: 'desktop_mcp',
-      serverId: 'desktop_mcp',
-      toolName: 'tuple_tool',
-      arguments: { coordinate: [1, 2, 3] },
-    }),
-  );
-  // A tuple violation is still rejected.
-  await assert.rejects(
-    () =>
-      call(
-        provider,
-        capabilityFrame({
-          offerId: 'desktop_mcp',
-          serverId: 'desktop_mcp',
-          toolName: 'tuple_tool',
-          arguments: { coordinate: [1, 'x'] },
-        }),
-      ),
-    /coordinate\/1 must be integer/,
-  );
-});
-
 test('an invalid patternProperties regex key is isolated at the provider boundary', () => {
-  // An unparseable regex key is rejected by the per-tool validation when the
-  // provider is built, so the offending tool is skipped instead of reaching
-  // Ajv.compile or the protocol decode.
+  // An unparseable regex key is rejected by the protocol boundary when the
+  // provider is built, so the offending tool is skipped before publication.
   const provider = createDesktopNativeCapabilityProvider({
     browserTools: [],
     resolveBrowserUrl: () => 'https://example.com/',

@@ -30,7 +30,6 @@ import {
   CLIENT_CAPABILITY_MAX_OFFERS,
   CLIENT_CAPABILITY_MAX_TOOLS,
   CLIENT_CAPABILITY_MAX_TOOLS_PER_OFFER,
-  CLIENT_CAPABILITY_SCHEMA_KEYWORDS,
   decodeClientCapabilityReplaceInput,
   decodeClientCapabilityToolDescriptor,
   projectToolInputSchema,
@@ -661,7 +660,7 @@ function declaredToolInputSchema(tool: MakaTool): Record<string, unknown> {
       })
     : cloneDeclaredJsonSchema(tool);
   delete schema.$schema;
-  return Object.freeze(projectClientCapabilitySchema(schema));
+  return Object.freeze(projectToolInputSchema(schema));
 }
 
 function cloneDeclaredJsonSchema(tool: MakaTool): Record<string, unknown> {
@@ -682,63 +681,11 @@ async function parseNativeToolArguments(parameters: unknown, args: unknown): Pro
   if (parameters instanceof z.ZodType) {
     return parameters.parseAsync(args);
   }
-  const wrapper = parameters as { validate?: (value: unknown) => PromiseLike<{ success: true; value?: unknown } | { success: false; error: Error }> };
-  if (typeof wrapper.validate === 'function') {
-    const result = await wrapper.validate(args);
-    if (result.success) return result.value ?? args;
-    throw result.error ?? new Error('Invalid arguments');
-  }
+  // MCP servers remain the authority for their full JSON Schema. The Client
+  // Capability publication is a deliberately smaller protocol projection, so
+  // compiling the external schema again here would duplicate that authority
+  // and execute untrusted regular expressions on the main thread.
   return args;
-}
-
-interface JsonSchemaWrapper {
-  readonly jsonSchema?: Record<string, unknown>;
-}
-
-function projectClientCapabilitySchema(schema: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(schema)) {
-    if (!CLIENT_CAPABILITY_SCHEMA_KEYWORDS.has(key)) continue;
-    const projected = projectClientCapabilitySchemaKeyword(key, value);
-    if (projected !== undefined) result[key] = projected;
-  }
-  return result;
-}
-
-function projectClientCapabilitySchemaKeyword(key: string, value: unknown): unknown {
-  switch (key) {
-    case 'properties':
-    case 'patternProperties':
-    case '$defs':
-    case 'definitions': {
-      if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
-      const result: Record<string, unknown> = {};
-      for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-        result[nestedKey] = projectClientCapabilitySchemaNode(nestedValue);
-      }
-      return result;
-    }
-    case 'items':
-      return Array.isArray(value)
-        ? value.map((entry) => projectClientCapabilitySchemaNode(entry))
-        : projectClientCapabilitySchemaNode(value);
-    case 'allOf':
-    case 'anyOf':
-    case 'oneOf':
-      if (!Array.isArray(value) || value.length === 0) return undefined;
-      return value.map((entry) => projectClientCapabilitySchemaNode(entry));
-    case 'additionalProperties':
-    case 'propertyNames':
-      return projectClientCapabilitySchemaNode(value);
-    default:
-      return value;
-  }
-}
-
-function projectClientCapabilitySchemaNode(value: unknown): unknown {
-  if (value === null || typeof value !== 'object') return value;
-  if (Array.isArray(value)) return value.map((entry) => projectClientCapabilitySchemaNode(entry));
-  return projectClientCapabilitySchema(value as Record<string, unknown>);
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
