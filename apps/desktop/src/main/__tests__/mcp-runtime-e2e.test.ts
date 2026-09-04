@@ -75,10 +75,13 @@ test('MCP tools stay bound to the connection generation that advertised them', a
     );
     // The published descriptor carries the real MCP identity: the Host
     // re-proxies it to the same mcp__fixture__echo model-facing name.
-    assert.deepEqual(provider.offers()[0]?.tools[0] && {
-      serverId: provider.offers()[0]?.tools[0]?.serverId,
-      name: provider.offers()[0]?.tools[0]?.name,
-      inputSchema: provider.offers()[0]?.tools[0]?.inputSchema,
+    const publishedEcho = provider.offers()
+      .flatMap(({ tools }) => tools)
+      .find(({ serverId, name }) => serverId === 'fixture' && name === 'echo');
+    assert.deepEqual(publishedEcho && {
+      serverId: publishedEcho.serverId,
+      name: publishedEcho.name,
+      inputSchema: publishedEcho.inputSchema,
     }, {
       serverId: 'fixture',
       name: 'echo',
@@ -96,7 +99,7 @@ test('MCP tools stay bound to the connection generation that advertised them', a
           registrationId: 'registration-1',
           offerId: 'desktop_mcp_fixture',
           serverId: 'fixture',
-          toolName: 'annotated',
+          toolName: 'missing',
           arguments: {},
           sessionId: 'session',
           turnId: 'turn',
