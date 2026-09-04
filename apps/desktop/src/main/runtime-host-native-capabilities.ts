@@ -30,7 +30,7 @@ import {
   CLIENT_CAPABILITY_MAX_OFFERS,
   CLIENT_CAPABILITY_MAX_TOOLS,
   CLIENT_CAPABILITY_MAX_TOOLS_PER_OFFER,
-  clientCapabilityEntityId,
+  CLIENT_CAPABILITY_SCHEMA_KEYWORDS,
   decodeClientCapabilityReplaceInput,
   decodeClientCapabilityToolDescriptor,
   projectToolInputSchema,
@@ -504,16 +504,17 @@ function prepareCapabilityGroups(
       const identity = isIdentifiedEntry(entry)
         ? { serverId: entry.serverId, toolName: entry.toolName }
         : undefined;
-      const declaredSchema = declaredToolInputSchema(tool);
       let descriptor: ClientCapabilityToolDescriptor;
       try {
+        const declaredSchema = declaredToolInputSchema(tool);
         descriptor = Object.freeze(
           decodeClientCapabilityToolDescriptor(
             capabilityToolDescriptor(group.offerId, tool, declaredSchema, identity),
           ),
         );
       } catch (error) {
-        if (!group.dynamic) throw error;
+        const dynamic = group.dynamic || group.offerId === 'desktop_mcp';
+        if (!dynamic) throw error;
         onDiagnostic?.(
           `Desktop omitted ${group.offerId} tool ${tool.name}: ${error instanceof Error ? error.message : String(error)}`,
         );
@@ -694,6 +695,16 @@ interface JsonSchemaWrapper {
   readonly jsonSchema?: Record<string, unknown>;
 }
 
+function projectClientCapabilitySchema(schema: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(schema)) {
+    if (!CLIENT_CAPABILITY_SCHEMA_KEYWORDS.has(key)) continue;
+    const projected = projectClientCapabilitySchemaKeyword(key, value);
+    if (projected !== undefined) result[key] = projected;
+  }
+  return result;
+}
+
 function projectClientCapabilitySchemaKeyword(key: string, value: unknown): unknown {
   switch (key) {
     case 'properties':
@@ -714,7 +725,8 @@ function projectClientCapabilitySchemaKeyword(key: string, value: unknown): unkn
     case 'allOf':
     case 'anyOf':
     case 'oneOf':
-      return Array.isArray(value) ? value.map((entry) => projectClientCapabilitySchemaNode(entry)) : [];
+      if (!Array.isArray(value) || value.length === 0) return undefined;
+      return value.map((entry) => projectClientCapabilitySchemaNode(entry));
     case 'additionalProperties':
     case 'propertyNames':
       return projectClientCapabilitySchemaNode(value);
