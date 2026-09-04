@@ -19,9 +19,9 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { jsonSchema } from 'ai';
 import { buildComputerUseTools, type ComputerUseToolSet } from '@maka/runtime/computer-use-tools';
 import { type CuDispatchBackend } from '@maka/runtime/computer-use-types';
+import { validateJsonSchemaInput } from '@maka/runtime/ai-sdk-backend';
 import { type MakaTool, type MakaToolContext } from '@maka/runtime/tool-runtime';
 import type { ClientCapabilityProvider } from '@maka/runtime-host/client';
 import {
@@ -35,6 +35,16 @@ import { buildClientSettingsTools } from '../client-settings-tools.js';
 import { browserOriginAdmission } from '../browser/browser-origin-admission.js';
 import { buildRiveWorkflowTool } from '../rive-workflow-tool.js';
 import { createDesktopNativeCapabilityProvider } from '../runtime-host-native-capabilities.js';
+
+function jsonSchema(schema: Record<string, unknown>): {
+  jsonSchema: Record<string, unknown>;
+  validate: (value: unknown) => ReturnType<typeof Promise.resolve>;
+} {
+  return {
+    jsonSchema: schema,
+    validate: async (value) => validateJsonSchemaInput(schema, value),
+  };
+}
 
 test('publishes self-described session-affine Browser and Computer Use offers', () => {
   const provider = createDesktopNativeCapabilityProvider({
@@ -248,7 +258,7 @@ test('validates jsonSchema-wrapped tool arguments and rejects invalid input', as
           arguments: { prefix: 'abc' },
         }),
       ),
-    /Invalid arguments/,
+    /prefix must be equal to one of the allowed values/,
   );
   assert.equal(calls.length, 0);
 
@@ -432,7 +442,7 @@ test('skips a malformed MCP tool without dropping the other offers', async () =>
   assert.equal(healthyCalls, 1);
 });
 
-test('does not enforce regex constraints locally (MCP endpoint re-validates)', async () => {
+test('enforces regex constraints through the Runtime JSON Schema validator', async () => {
   const calls: unknown[] = [];
   const provider = createDesktopNativeCapabilityProvider({
     browserTools: [],
@@ -466,22 +476,23 @@ test('does not enforce regex constraints locally (MCP endpoint re-validates)', a
     ],
   });
 
-  // Pattern-violating value is accepted locally; the regex is enforced by
-  // the MCP endpoint (guards against ReDoS in the Electron main process).
-  await call(
-    provider,
-    capabilityFrame({
-      offerId: 'desktop_mcp',
-      serverId: 'desktop_mcp',
-      toolName: 'prefix_tool',
-      arguments: { prefix: '123' },
-    }),
+  await assert.rejects(
+    () =>
+      call(
+        provider,
+        capabilityFrame({
+          offerId: 'desktop_mcp',
+          serverId: 'desktop_mcp',
+          toolName: 'prefix_tool',
+          arguments: { prefix: '123' },
+        }),
+      ),
+    /prefix must match pattern/,
   );
-  assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0], { prefix: '123' });
+  assert.equal(calls.length, 0);
 });
 
-test('validates tuple items against Ajv 2020 semantics', async () => {
+test('validates tuple items through the Runtime JSON Schema validator', async () => {
   const provider = createDesktopNativeCapabilityProvider({
     browserTools: [],
     resolveBrowserUrl: () => 'https://example.com/',
@@ -514,14 +525,14 @@ test('validates tuple items against Ajv 2020 semantics', async () => {
     ],
   });
 
-  // A valid draft-07 tuple compiles as prefixItems under Ajv 2020 and passes.
+  // Draft-07 tuples allow trailing items unless additionalItems is false.
   await call(
     provider,
     capabilityFrame({
       offerId: 'desktop_mcp',
       serverId: 'desktop_mcp',
       toolName: 'tuple_tool',
-      arguments: { coordinate: [1, 2] },
+      arguments: { coordinate: [1, 2, 3] },
     }),
   );
   // A tuple violation is still rejected.
@@ -536,7 +547,7 @@ test('validates tuple items against Ajv 2020 semantics', async () => {
           arguments: { coordinate: [1, 'x'] },
         }),
       ),
-    /Invalid arguments/,
+    /coordinate\/1 must be integer/,
   );
 });
 

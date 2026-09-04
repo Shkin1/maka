@@ -102,6 +102,21 @@ test('buildMcpTools projects discovery, abort, and rich model output', async () 
   assert.match(model?.value[2]?.type === 'text' ? model.value[2].text : '', /structuredContent/u);
 });
 
+test('buildMcpTools installs and invokes the Runtime JSON Schema validator wrapper', async () => {
+  const [tool] = buildMcpTools(
+    fakeProvider(
+      [boundTool(descriptor('server', 'validated'), binding('validated-binding'))],
+      async () => ({ content: [] }),
+    ),
+  );
+  const parameters = tool?.parameters as {
+    validate?: (value: unknown) => Promise<{ success: boolean }>;
+  };
+  assert.equal(typeof parameters.validate, 'function');
+  assert.equal((await parameters.validate?.({ value: 'ok' }))?.success, true);
+  assert.equal((await parameters.validate?.({ value: 42 }))?.success, false);
+});
+
 test('buildMcpTools carries the Runtime-owned form callback to the provider', async () => {
   const cancellation = new AbortController();
   const provider = fakeProvider(
