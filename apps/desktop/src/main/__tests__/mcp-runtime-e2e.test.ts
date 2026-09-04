@@ -104,6 +104,7 @@ test('MCP tools stay bound to the connection generation that advertised them', a
         type: 'object',
         properties: { value: { type: 'string' } },
         patternProperties: { '^tag:': { type: 'string' } },
+        additionalItems: { type: 'integer' },
       },
     });
     if (!provider.call) throw new Error('Expected a callable Desktop capability provider');
