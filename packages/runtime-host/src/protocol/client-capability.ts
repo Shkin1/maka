@@ -901,12 +901,15 @@ function projectSchemaKeyword(key: string, value: unknown): unknown {
   if (shape === undefined) return value;
   switch (shape) {
     case 'record': {
-      if (value === null || typeof value !== 'object' || Array.isArray(value)) return {};
-      const result: Record<string, unknown> = {};
-      for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
-        result[nestedKey] = projectSchemaNode(nestedValue);
+      if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+        throw new Error(`Client Capability tool schema ${key} must be an object`);
       }
-      return result;
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([nestedKey, nestedValue]) => [
+          nestedKey,
+          projectSchemaNode(nestedValue),
+        ]),
+      );
     }
     case 'array': {
       if (!Array.isArray(value) || value.length === 0) return undefined;

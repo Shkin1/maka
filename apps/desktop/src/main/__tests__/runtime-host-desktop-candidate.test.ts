@@ -576,7 +576,6 @@ test('isolates an invalid dynamic MCP tool without dropping the Host connection'
           label: 'MCP',
           description: 'MCP tools',
           tools: [invalidTool, healthyTool],
-          dynamic: true,
         },
       ],
     }),

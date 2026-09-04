@@ -246,6 +246,85 @@ test('skips non-object root jsonSchema tools without dropping the offer', () => 
   );
 });
 
+test('skips malformed record-shaped schemas without dropping healthy MCP tools', () => {
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'bad_tool',
+            displayName: 'bad_tool',
+            description: 'bad_tool description',
+            parameters: jsonSchema({ type: 'object', properties: [] as never }),
+            impl: async () => 'bad',
+          },
+          {
+            name: 'good_tool',
+            displayName: 'good_tool',
+            description: 'good_tool description',
+            parameters: jsonSchema({
+              type: 'object',
+              properties: { value: { type: 'string' } },
+            }),
+            impl: async () => 'good',
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    provider.offers().flatMap((offer) => offer.tools).map((tool) => tool.name),
+    ['good_tool'],
+  );
+});
+
+test('preserves a JSON Schema property named __proto__ during projection', () => {
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'proto_tool',
+            displayName: 'proto_tool',
+            description: 'proto_tool description',
+            parameters: jsonSchema({
+              type: 'object',
+              properties: JSON.parse(
+                '{"__proto__":{"type":"string"},"safe":{"type":"number"}}',
+              ),
+            }),
+            impl: async () => 'ok',
+          },
+        ],
+      },
+    ],
+  });
+
+  const properties = provider.offers()[0]?.tools[0]?.inputSchema.properties as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  assert.ok(properties && Object.hasOwn(properties, '__proto__'));
+  assert.deepEqual(properties?.['__proto__'], { type: 'string' });
+  assert.deepEqual(properties?.safe, { type: 'number' });
+});
+
 test('skips unsupported schema type tools without dropping the offer', () => {
   const provider = createDesktopNativeCapabilityProvider({
     browserTools: [],
@@ -463,6 +542,7 @@ test('empty allOf/anyOf/oneOf are projected away so the schema still publishes',
     | { properties?: { x?: Record<string, unknown> } }
     | undefined;
   const x = published?.properties?.x;
+  assert.deepEqual(x, { type: 'string' });
   assert.equal(x !== undefined && 'allOf' in x, false);
   assert.equal(x !== undefined && 'anyOf' in x, false);
   assert.equal(x !== undefined && 'oneOf' in x, false);
