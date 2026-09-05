@@ -19,7 +19,7 @@
 
 import { createHash } from 'node:crypto';
 import { jsonSchema } from 'ai';
-import { validateMcpJsonSchemaInput } from './ai-sdk-backend.js';
+import { validateMcpJsonSchemaInput } from './mcp-schema-preflight.js';
 import type { ToolActivityKind } from '@maka/core/events';
 import type {
   McpCallResult,

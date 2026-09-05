@@ -117,6 +117,32 @@ test('buildMcpTools installs bounded MCP schema preflight validation', async () 
   assert.equal((await parameters.validate?.({ value: 42 }))?.success, false);
 });
 
+test('MCP schema preflight skips server regexes without dropping structural validation', async () => {
+  const toolDescriptor: McpToolDescriptor = {
+    ...descriptor('server', 'regex'),
+    inputSchema: {
+      type: 'object',
+      properties: { value: { type: 'string', pattern: '(' } },
+      patternProperties: { '^x-': { type: 'string' } },
+      additionalProperties: false,
+    },
+  };
+  const [tool] = buildMcpTools(
+    fakeProvider([boundTool(toolDescriptor, binding('regex-binding'))], async () => ({
+      content: [],
+    })),
+  );
+  const parameters = tool?.parameters as {
+    validate?: (value: unknown) => Promise<{ success: boolean }>;
+  };
+
+  assert.equal(
+    (await parameters.validate?.({ value: 'ok', 'x-tag': 'server-owned' }))?.success,
+    true,
+  );
+  assert.equal((await parameters.validate?.({ value: 42 }))?.success, false);
+});
+
 test('buildMcpTools carries the Runtime-owned form callback to the provider', async () => {
   const cancellation = new AbortController();
   const provider = fakeProvider(
