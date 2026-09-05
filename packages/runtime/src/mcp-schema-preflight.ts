@@ -55,7 +55,7 @@ function stripUnsafeRegexConstraints(value: unknown): unknown {
   const hasPatternProperties = isRecord(value.patternProperties);
   const entries: Array<[string, unknown]> = [];
   for (const [key, nested] of Object.entries(value)) {
-    if (key === 'pattern' || key === 'patternProperties') continue;
+    if (key === '$schema' || key === 'pattern' || key === 'patternProperties') continue;
     if (key === 'additionalProperties' && hasPatternProperties) continue;
     entries.push([key, projectSchemaKeyword(key, nested)]);
   }
