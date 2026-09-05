@@ -853,6 +853,7 @@ const CLIENT_CAPABILITY_SCHEMA_CONTAINER_SHAPES: Record<
 > = {
   properties: 'record',
   patternProperties: 'record',
+  additionalItems: 'single',
   $defs: 'record',
   definitions: 'record',
   allOf: 'array',
