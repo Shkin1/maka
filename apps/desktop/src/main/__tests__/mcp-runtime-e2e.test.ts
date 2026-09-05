@@ -131,6 +131,35 @@ test('MCP tools stay bound to the connection generation that advertised them', a
       ),
       /not offered/u,
     );
+    let annotatedAdmissionEvidence: unknown;
+    assert.deepEqual(
+      await provider.call(
+        {
+          kind: 'client.capability.call',
+          invocationId: 'annotated-invocation',
+          registrationId: 'registration-1',
+          offerId: 'desktop_mcp_fixture',
+          serverId: 'fixture',
+          toolName: 'annotated',
+          arguments: { fallback: 'desktop-capability' },
+          sessionId: 'session',
+          turnId: 'turn',
+          toolCallId: 'annotated-capability-call',
+          cwd: process.cwd(),
+        },
+        {
+          signal: new AbortController().signal,
+          accept: async (evidence) => {
+            annotatedAdmissionEvidence = evidence;
+          },
+          requestInteraction: async () => assert.fail('Unexpected provider interaction'),
+        },
+      ),
+      {
+        content: [{ type: 'text', text: 'annotated:desktop-capability' }],
+      },
+    );
+    assert.deepEqual(annotatedAdmissionEvidence, { kind: 'none' });
     let admissionEvidence: unknown;
     assert.deepEqual(
       await provider.call(

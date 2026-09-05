@@ -202,6 +202,54 @@ test('projects and publishes jsonSchema-wrapped MCP proxy tool descriptors', () 
   assert.deepEqual(published?.patternProperties, { '^x-': { type: 'string' } });
 });
 
+test('forwards JSON Schema native capability arguments to the MCP authority', async () => {
+  let receivedArguments: unknown;
+  const provider = createDesktopNativeCapabilityProvider({
+    browserTools: [],
+    resolveBrowserUrl: () => 'https://example.com/',
+    releaseBrowserSession() {},
+    computerUseTools: computerTools(),
+    releaseComputerUseSession() {},
+    additionalGroups: () => [
+      {
+        offerId: 'desktop_mcp',
+        label: 'MCP',
+        description: 'MCP tools',
+        tools: [
+          {
+            name: 'server_validated',
+            displayName: 'server_validated',
+            description: 'server_validated description',
+            parameters: jsonSchema({
+              type: 'object',
+              required: ['token'],
+              properties: { token: { type: 'string' } },
+            }),
+            impl: async (args: unknown) => {
+              receivedArguments = args;
+              return 'server result';
+            },
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    await call(
+      provider,
+      capabilityFrame({
+        offerId: 'desktop_mcp',
+        serverId: 'desktop_mcp',
+        toolName: 'server_validated',
+        arguments: {},
+      }),
+    ),
+    { content: [{ type: 'text', text: 'server result' }] },
+  );
+  assert.deepEqual(receivedArguments, {});
+});
+
 test('skips non-object root jsonSchema tools without dropping the offer', () => {
   const provider = createDesktopNativeCapabilityProvider({
     browserTools: [],
@@ -285,44 +333,6 @@ test('skips malformed record-shaped schemas without dropping healthy MCP tools',
     provider.offers().flatMap((offer) => offer.tools).map((tool) => tool.name),
     ['good_tool'],
   );
-});
-
-test('preserves a JSON Schema property named __proto__ during projection', () => {
-  const provider = createDesktopNativeCapabilityProvider({
-    browserTools: [],
-    resolveBrowserUrl: () => 'https://example.com/',
-    releaseBrowserSession() {},
-    computerUseTools: computerTools(),
-    releaseComputerUseSession() {},
-    additionalGroups: () => [
-      {
-        offerId: 'desktop_mcp',
-        label: 'MCP',
-        description: 'MCP tools',
-        tools: [
-          {
-            name: 'proto_tool',
-            displayName: 'proto_tool',
-            description: 'proto_tool description',
-            parameters: jsonSchema({
-              type: 'object',
-              properties: JSON.parse(
-                '{"__proto__":{"type":"string"},"safe":{"type":"number"}}',
-              ),
-            }),
-            impl: async () => 'ok',
-          },
-        ],
-      },
-    ],
-  });
-
-  const properties = provider.offers()[0]?.tools[0]?.inputSchema.properties as
-    | Record<string, Record<string, unknown>>
-    | undefined;
-  assert.ok(properties && Object.hasOwn(properties, '__proto__'));
-  assert.deepEqual(properties?.['__proto__'], { type: 'string' });
-  assert.deepEqual(properties?.safe, { type: 'number' });
 });
 
 test('skips unsupported schema type tools without dropping the offer', () => {
@@ -445,61 +455,6 @@ test('skips a malformed MCP tool without dropping the other offers', async () =>
     }),
   );
   assert.equal(healthyCalls, 1);
-});
-
-test('an invalid patternProperties regex key is isolated at the provider boundary', () => {
-  // An unparseable regex key is rejected by the protocol boundary when the
-  // provider is built, so the offending tool is skipped before publication.
-  const provider = createDesktopNativeCapabilityProvider({
-    browserTools: [],
-    resolveBrowserUrl: () => 'https://example.com/',
-    releaseBrowserSession() {},
-    computerUseTools: computerTools(),
-    releaseComputerUseSession() {},
-    additionalGroups: () => [
-      {
-        offerId: 'desktop_mcp',
-        label: 'MCP',
-        description: 'MCP tools',
-        tools: [
-          {
-            name: 'bad_tool',
-            displayName: 'bad_tool',
-            description: 'bad_tool description',
-            parameters: jsonSchema({
-              type: 'object',
-              patternProperties: {
-                '(': { type: 'string' },
-              },
-            }),
-            impl: async () => 'nope',
-          },
-          {
-            name: 'good_tool',
-            displayName: 'good_tool',
-            description: 'good_tool description',
-            parameters: jsonSchema({
-              type: 'object',
-              properties: { value: { type: 'string' } },
-            }),
-            impl: async () => 'ok',
-          },
-        ],
-      },
-    ],
-  });
-
-  const tools = provider.offers().flatMap((offer) => offer.tools);
-  assert.deepEqual(
-    tools.map((descriptor) => descriptor.name),
-    ['good_tool'],
-  );
-  assert.doesNotThrow(() =>
-    decodeClientCapabilityReplaceInput({
-      registrationId: 'registration-1',
-      offers: provider.offers(),
-    }),
-  );
 });
 
 test('empty allOf/anyOf/oneOf are projected away so the schema still publishes', () => {

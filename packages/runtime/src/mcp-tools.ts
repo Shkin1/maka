@@ -19,7 +19,6 @@
 
 import { createHash } from 'node:crypto';
 import { jsonSchema } from 'ai';
-import { validateMcpJsonSchemaInput } from './mcp-schema-preflight.js';
 import type { ToolActivityKind } from '@maka/core/events';
 import type {
   McpCallResult,
@@ -143,11 +142,9 @@ export function buildMcpToolsWithIdentities(
         categoryHint: options.categoryHint ?? 'network_send',
         ...(options.hostAdmission ? { hostAdmission: options.hostAdmission } : {}),
         ...(options.recoveryMode ? { recoveryMode: options.recoveryMode } : {}),
-        parameters: jsonSchema(inputSchema, {
-          // Local preflight covers bounded structural constraints; the MCP
-          // server remains authoritative for the complete schema.
-          validate: async (value) => validateMcpJsonSchemaInput(inputSchema, value),
-        }),
+        // The MCP server remains the sole authority for the complete JSON
+        // Schema. Runtime only carries the declaration to the AI SDK.
+        parameters: jsonSchema(inputSchema),
         ...(provider.prepareTool
           ? {
               prepareExecution: async (args: unknown, context) => {

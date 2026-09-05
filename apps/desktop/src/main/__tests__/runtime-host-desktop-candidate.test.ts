@@ -547,6 +547,33 @@ test('rolls back only candidate-owned IPC after a registration collision', async
   assert.equal(host.closeCalls, 1);
 });
 
+test('closes the claimed Host connection when native capability construction fails', async () => {
+  const ipc = ipcHarness();
+  const host = connectionHarness('invalid-capability');
+  const invalidTool = {
+    ...nativeTool(),
+    parameters: z.string(),
+  } as unknown as MakaTool;
+
+  await assert.rejects(
+    () =>
+      createDesktopRuntimeHostCandidate(
+        host.connection,
+        deps(ipc, {
+          browserTools: [invalidTool],
+          resolveBrowserUrl: () => 'https://example.com/',
+          releaseBrowserSession() {},
+          computerUseTools: emptyComputerUseTools(),
+          releaseComputerUseSession() {},
+        }),
+      ),
+    /tool schema root must be an object/,
+  );
+
+  assert.equal(ipc.size, 0);
+  assert.equal(host.closeCalls, 1);
+});
+
 test('isolates an invalid dynamic MCP tool without dropping the Host connection', async () => {
   // Per-tool isolation: one bad tool is skipped and the provider still
   // constructs, so the Host connection stays alive.

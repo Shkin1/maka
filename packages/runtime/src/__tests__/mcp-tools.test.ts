@@ -102,45 +102,59 @@ test('buildMcpTools projects discovery, abort, and rich model output', async () 
   assert.match(model?.value[2]?.type === 'text' ? model.value[2].text : '', /structuredContent/u);
 });
 
-test('buildMcpTools installs bounded MCP schema preflight validation', async () => {
+test('buildMcpTools leaves MCP JSON Schema validation to the server', async () => {
+  const inputSchema = {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    type: 'object',
+    properties: {
+      values: {
+        type: 'array',
+        prefixItems: [{ type: 'string' }],
+        items: { type: 'number' },
+      },
+    },
+    required: ['values'],
+  };
+  let invocationArgs: unknown;
   const [tool] = buildMcpTools(
     fakeProvider(
-      [boundTool(descriptor('server', 'validated'), binding('validated-binding'))],
-      async () => ({ content: [] }),
+      [
+        boundTool(
+          {
+            ...descriptor('server', 'validated'),
+            inputSchema,
+          },
+          binding('validated-binding'),
+        ),
+      ],
+      async (_binding, args) => {
+        invocationArgs = args;
+        return { content: [] };
+      },
     ),
   );
   const parameters = tool?.parameters as {
-    validate?: (value: unknown) => Promise<{ success: boolean }>;
+    jsonSchema?: unknown;
+    validate?: unknown;
   };
-  assert.equal(typeof parameters.validate, 'function');
-  assert.equal((await parameters.validate?.({ value: 'ok' }))?.success, true);
-  assert.equal((await parameters.validate?.({ value: 42 }))?.success, false);
-});
-
-test('MCP schema preflight skips server regexes without dropping structural validation', async () => {
-  const toolDescriptor: McpToolDescriptor = {
-    ...descriptor('server', 'regex'),
-    inputSchema: {
-      type: 'object',
-      properties: { value: { type: 'string', pattern: '(' } },
-      patternProperties: { '^x-': { type: 'string' } },
-      additionalProperties: false,
-    },
-  };
-  const [tool] = buildMcpTools(
-    fakeProvider([boundTool(toolDescriptor, binding('regex-binding'))], async () => ({
-      content: [],
-    })),
+  assert.deepEqual(parameters.jsonSchema, inputSchema);
+  assert.equal(parameters.validate, undefined);
+  if (!tool) throw new Error('expected MCP tool');
+  assert.deepEqual(
+    await tool.impl(
+      { values: ['head', 42] },
+      {
+        sessionId: 'session',
+        turnId: 'turn',
+        cwd: '/workspace',
+        toolCallId: 'tool-call',
+        abortSignal: new AbortController().signal,
+        emitOutput() {},
+      },
+    ),
+    { content: [] },
   );
-  const parameters = tool?.parameters as {
-    validate?: (value: unknown) => Promise<{ success: boolean }>;
-  };
-
-  assert.equal(
-    (await parameters.validate?.({ value: 'ok', 'x-tag': 'server-owned' }))?.success,
-    true,
-  );
-  assert.equal((await parameters.validate?.({ value: 42 }))?.success, false);
+  assert.deepEqual(invocationArgs, { values: ['head', 42] });
 });
 
 test('buildMcpTools carries the Runtime-owned form callback to the provider', async () => {
